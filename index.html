@@ -274,7 +274,8 @@ function enrich(j) {
     p.rel = qWords.length ? qWords.filter(w => txt.toLowerCase().includes(w)).length / qWords.length : 1;
     p.rank = (p.want ? 1000 : 0) + p.rel * 400 + Math.log10(1 + p.score) * 60 + Math.log10(1 + p.comments) * 80;
   });
-  j.posts = j.posts.filter(p => p.rel > 0).sort((a, b) => b.rank - a.rank);
+  const need = qWords.length <= 3 ? 1 : 0.6;
+  j.posts = j.posts.filter(p => p.rel >= need).sort((a, b) => b.rank - a.rank);
   return j;
 }
 

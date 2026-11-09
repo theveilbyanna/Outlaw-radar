@@ -131,28 +131,52 @@ function mapReddit(d) {
   };
 }
 
-function isoDate(s) {
-  const d = new Date(s);
-  return isNaN(d) ? null : d.toISOString();
+// Search engines as a back door: find Reddit and Quora threads even when
+// those sites block server traffic. Tries Bing, DuckDuckGo, then Mojeek.
+function decodeHref(h) {
+  h = h.replace(/&amp;/g, '&');
+  try {
+    if (h.startsWith('//')) h = 'https:' + h;
+    const u = new URL(h, 'https://x.invalid');
+    const uddg = u.searchParams.get('uddg');
+    if (uddg) return uddg;
+    if (/bing\.com$/.test(u.hostname) && u.pathname.startsWith('/ck/')) {
+      let v = u.searchParams.get('u') || '';
+      if (v.startsWith('a1')) v = v.slice(2);
+      return Buffer.from(v.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    }
+    return u.href;
+  } catch {
+    return h;
+  }
 }
 
-// Bing search results as RSS: lets us read Reddit and Quora threads
-// even when those sites block server traffic.
-async function bingRss(query) {
-  const t = await fetchText(
-    `https://www.bing.com/search?format=rss&count=30&setlang=en-US&cc=US&q=${enc(query)}`,
-    7000,
-    { Accept: 'application/rss+xml, application/xml, text/xml, */*' }
-  );
-  const items = [...t.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => {
-    const get = (tag) => {
-      const r = m[1].match(new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>'));
-      return r ? clean(clean(r[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1'))) : '';
-    };
-    return { title: get('title'), link: get('link'), description: get('description'), pubDate: get('pubDate') };
-  });
-  if (!items.length) throw new Error(/<rss/i.test(t) ? 'no results' : 'bing blocked');
-  return items;
+async function siteSearch(site, q, linkRe) {
+  const query = enc(`site:${site} ${q}`);
+  const engines = [
+    ['bing', `https://www.bing.com/search?q=${query}&setlang=en-US&cc=US&count=30`],
+    ['ddg', `https://html.duckduckgo.com/html/?q=${query}`],
+    ['mojeek', `https://www.mojeek.com/search?q=${query}`],
+  ];
+  const errs = [];
+  for (const [name, url] of engines) {
+    try {
+      const html = await fetchText(url, 7000, { Accept: 'text/html,application/xhtml+xml' });
+      const best = new Map();
+      for (const m of html.matchAll(/<a\b[^>]*?href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+        const link = decodeHref(m[1]).split(/[?#]/)[0];
+        if (!linkRe.test(link)) continue;
+        const title = clean(m[2]);
+        if (title.length < 12 || /^https?:|›/.test(title)) continue;
+        if (!best.has(link) || best.get(link).length < title.length) best.set(link, title);
+      }
+      if (best.size) return [...best].map(([link, title]) => ({ link, title }));
+      errs.push(name + ': none');
+    } catch (e) {
+      errs.push(name + ': ' + e.message);
+    }
+  }
+  throw new Error(errs.join(' | '));
 }
 
 async function reddit(q) {
@@ -181,39 +205,36 @@ async function reddit(q) {
   } catch (e) {
     errs.push('pullpush: ' + e.message);
   }
-  // 3) Reddit threads found through Bing
+  // 3) Reddit threads found through search engines
   try {
-    const items = (await bingRss(`site:reddit.com ${q}`)).filter((i) => /reddit\.com\/r\//.test(i.link));
-    if (items.length)
-      return items.map((i) => ({
-        source: 'reddit',
-        title: i.title.replace(/\s*[:|\-–]\s*r\/[\w-]+.*$/i, '').replace(/\s*-\s*Reddit$/i, ''),
-        snippet: i.description.slice(0, 320),
-        url: i.link,
-        where: 'r/' + ((i.link.match(/reddit\.com\/r\/([^/]+)/) || [])[1] || 'reddit'),
-        score: 0,
-        comments: 0,
-        date: isoDate(i.pubDate),
-      }));
-    errs.push('bing: empty');
+    const items = await siteSearch('reddit.com', q, /reddit\.com\/r\/[^/]+\/comments\//);
+    return items.map((i) => ({
+      source: 'reddit',
+      title: i.title.replace(/\s*[:|\-–]\s*r\/[\w-]+.*$/i, '').replace(/\s*[-·|]\s*Reddit.*$/i, ''),
+      snippet: '',
+      url: i.link,
+      where: 'r/' + ((i.link.match(/reddit\.com\/r\/([^/]+)/) || [])[1] || 'reddit'),
+      score: 0,
+      comments: 0,
+      date: null,
+    }));
   } catch (e) {
-    errs.push('bing: ' + e.message);
+    errs.push(e.message);
   }
   throw new Error(errs.join(' | '));
 }
 
 async function quora(q) {
-  const items = (await bingRss(`site:quora.com ${q}`)).filter((i) => /quora\.com\//.test(i.link));
-  if (!items.length) throw new Error('no results');
+  const items = await siteSearch('quora.com', q, /quora\.com\/(?!profile|topic|search|answer|spaces?\/)[A-Za-z0-9][^/]{8,}$/);
   return items.map((i) => ({
     source: 'quora',
-    title: i.title.replace(/\s*-\s*Quora$/i, ''),
-    snippet: i.description.slice(0, 320),
+    title: i.title.replace(/\s*[-·|]\s*Quora.*$/i, ''),
+    snippet: '',
     url: i.link,
     where: 'Quora',
     score: 0,
     comments: 0,
-    date: isoDate(i.pubDate),
+    date: null,
   }));
 }
 
