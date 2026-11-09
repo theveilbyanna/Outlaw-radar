@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Outlaw Radar — Find What People Want</title>
-<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Reddit and Hacker News live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
+<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Lemmy, Hacker News and Reddit live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
 <meta name="keywords" content="market research tool, what people are searching for, keyword research free, product ideas, content ideas, reddit pain points, answer the public alternative, niche research">
 <meta property="og:title" content="Outlaw Radar — Find What People Want">
 <meta property="og:description" content="Live demand scanner: real searches, real complaints, real wishes. Turn them into products and posts.">
@@ -153,14 +153,14 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0 0}
     <div class="chips" id="niches"></div>
   </div>
 
-  <div class="loader" id="loader"><div class="radar"></div><div id="loadmsg">Scanning Google, YouTube, Amazon, Reddit…</div></div>
+  <div class="loader" id="loader"><div class="radar"></div><div id="loadmsg">Scanning Google, YouTube, Amazon, forums…</div></div>
   <div id="out"></div>
 
   <div class="intro" id="intro">
     <h3>What it does</h3>
     <ul>
       <li>Pulls what people are <b>typing right now</b> into Google, YouTube, Bing, DuckDuckGo, Amazon and eBay.</li>
-      <li>Digs through <b>Reddit and Hacker News</b> posts for complaints, wishes and "is there an app for…" moments.</li>
+      <li>Digs through <b>forum posts</b> on Lemmy, Hacker News and Reddit (when Reddit lets us in) for complaints, wishes and "is there an app for…" moments.</li>
       <li>Sorts it all into <b>Questions, Problems, Buying, Gaps and Versus</b> so you can spot products and posts people already want.</li>
       <li>Turns the hottest finds into <b>ready-to-post ideas</b> with hooks, SEO keywords, your link and hashtags — one tap to copy.</li>
     </ul>
@@ -279,17 +279,16 @@ async function redditFromPhone(q, signal) {
   return { ok: true, posts: ok.flatMap(x => x.value) };
 }
 function mergeReddit(j, rr) {
-  const src = j.sources.find(s => s.name === 'Reddit');
-  if (!rr || !rr.ok) { if (src && !src.ok) src.error = 'phone: ' + (rr && rr.error) + ' | server: ' + src.error; return; }
+  // Reddit only shows up when it lets the phone in; no red chip otherwise.
+  if (!rr || !rr.ok || !rr.posts.length) return;
   const seen = new Set(j.posts.map(p => p.url));
   const add = rr.posts.filter(p => p.title && !seen.has(p.url) && seen.add(p.url));
   j.posts.push(...add);
-  const count = j.posts.filter(p => p.source === 'reddit').length;
-  if (src) Object.assign(src, { ok: true, count, error: null });
+  j.sources.push({ name: 'Reddit', ok: true, count: add.length, error: null });
 }
 
 // ---------- scan ----------
-const MSGS = ['Scanning Google, YouTube, Amazon, Reddit…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
+const MSGS = ['Scanning Google, YouTube, Amazon, forums…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
 let ctl;
 async function scan() {
   const q = $('#q').value.trim();
@@ -417,7 +416,7 @@ function ago(iso) {
 }
 function renderPosts() {
   const list = data.posts;
-  if (!list.length) return `<div class="empty">No posts came back for this topic. Reddit sometimes blocks scans — try again in a bit, or try a broader word.</div>`;
+  if (!list.length) return `<div class="empty">No forum posts came back for this topic. Try a broader word.</div>`;
   const rows = list.slice(0, shown).map(p => `
     <div class="row">
       <div class="t">${esc(p.title)}</div>
@@ -494,7 +493,7 @@ function claudePrompt() {
   const sec = (title, arr) => arr.length ? `\n## ${title}\n` + arr.map(s => `- ${s.text} (seen on ${s.sources.join(', ')})`).join('\n') : '';
   const by = (id) => d.suggestions.filter(s => s.cat.id === id).slice(0, 25);
   const posts = d.posts.slice(0, 25).map(p => `- ${p.want ? '[WANT] ' : ''}${p.title} — ${p.where}, ▲${p.score}, 💬${p.comments} — ${p.url}`).join('\n');
-  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and Reddit/Hacker News posts for "${d.query}". Using ONLY this data, tell me:
+  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and forum posts (Lemmy, Hacker News, Reddit) for "${d.query}". Using ONLY this data, tell me:
 1. The 5 strongest product or service opportunities (what to make, who buys it, rough price).
 2. The 10 best faceless short-video ideas with hooks.
 3. Any gap nobody is serving yet.

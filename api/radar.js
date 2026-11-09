@@ -1,7 +1,8 @@
 // Outlaw Radar — live demand scanner
 // GET /api/radar?q=topic&deep=1
 // Pulls what real people type and post: Google, YouTube, Bing, DuckDuckGo,
-// Amazon and eBay autocomplete, plus Reddit and Hacker News posts.
+// Amazon and eBay autocomplete, plus Lemmy and Hacker News posts.
+// (Reddit is fetched by the viewer's browser when Reddit allows it.)
 // No API keys, no cost. Results are cached at the edge for an hour.
 
 const UA =
@@ -118,46 +119,34 @@ function clean(s) {
     .trim();
 }
 
-function mapReddit(d) {
-  return {
-    source: 'reddit',
-    title: clean(d.title),
-    snippet: clean(d.selftext).slice(0, 320),
-    url: 'https://www.reddit.com' + (d.permalink || ''),
-    where: 'r/' + d.subreddit,
-    score: d.score || 0,
-    comments: d.num_comments || 0,
-    date: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null,
-  };
-}
-
-async function reddit(q) {
-  const errs = [];
-  // 1) Reddit directly
-  for (const host of ['www', 'old']) {
-    try {
-      const j = await fetchJSON(
-        `https://${host}.reddit.com/search.json?q=${enc(q)}&sort=relevance&t=year&limit=50&raw_json=1`,
-        7000,
-        { 'User-Agent': 'web:outlaw-radar:v1.1 (demand research)' }
-      );
-      const kids = (j && j.data && j.data.children) || [];
-      if (kids.length) return kids.map((k) => mapReddit(k.data));
-      errs.push(host + ': empty');
-    } catch (e) {
-      errs.push(host + ': ' + e.message);
+// Lemmy: an open, Reddit-style network of forums with a free public API.
+async function lemmy(q) {
+  const urls = [
+    `https://lemmy.world/api/v3/search?q=${enc(q)}&type_=Posts&sort=TopAll&limit=40`,
+    `https://lemmy.world/api/v3/search?q=${enc(q)}&type_=Posts&sort=New&limit=20`,
+  ];
+  const res = await Promise.allSettled(urls.map((u) => fetchJSON(u, 7000)));
+  const out = [];
+  for (const r of res) {
+    if (r.status !== 'fulfilled') continue;
+    for (const pv of r.value.posts || []) {
+      const p = pv.post || {};
+      const c = pv.community || {};
+      const n = pv.counts || {};
+      out.push({
+        source: 'lemmy',
+        title: clean(p.name),
+        snippet: clean(p.body).slice(0, 320),
+        url: p.ap_id || `https://lemmy.world/post/${p.id}`,
+        where: 'Lemmy · ' + (c.title || c.name || 'forum'),
+        score: n.score || 0,
+        comments: n.comments || 0,
+        date: p.published || null,
+      });
     }
   }
-  // 2) PullPush public Reddit archive
-  try {
-    const j = await fetchJSON(`https://api.pullpush.io/reddit/search/submission/?q=${enc(q)}&size=50`, 8000);
-    const d = (j && j.data) || [];
-    if (d.length) return d.map(mapReddit);
-    errs.push('pullpush: empty');
-  } catch (e) {
-    errs.push('pullpush: ' + e.message);
-  }
-  throw new Error(errs.join(' | '));
+  if (!out.length && res.every((r) => r.status === 'rejected')) throw res[0].reason;
+  return [...new Map(out.map((p) => [p.url, p])).values()];
 }
 
 async function hackerNews(q) {
@@ -220,7 +209,7 @@ module.exports = async (req, res) => {
     runSource('DuckDuckGo', 'suggest', () => multi(shortTerms, ddgSuggest)),
     runSource('Amazon', 'suggest', () => multi([q, `${q} for`, `best ${q}`], amazonSuggest)),
     runSource('eBay', 'suggest', () => multi([q], ebaySuggest)),
-    runSource('Reddit', 'posts', () => reddit(q)),
+    runSource('Lemmy forums', 'posts', () => lemmy(q)),
     runSource('Hacker News', 'posts', () => hackerNews(q)),
   ]);
 
