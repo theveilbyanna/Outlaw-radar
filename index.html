@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Outlaw Radar — Find What People Want</title>
-<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Reddit and Hacker News live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
+<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Reddit, Quora and Hacker News live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
 <meta name="keywords" content="market research tool, what people are searching for, keyword research free, product ideas, content ideas, reddit pain points, answer the public alternative, niche research">
 <meta property="og:title" content="Outlaw Radar — Find What People Want">
 <meta property="og:description" content="Live demand scanner: real searches, real complaints, real wishes. Turn them into products and posts.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0b0b10">
+<link rel="canonical" href="https://outlaw-radar.vercel.app/">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -159,7 +160,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0 0}
     <h3>What it does</h3>
     <ul>
       <li>Pulls what people are <b>typing right now</b> into Google, YouTube, Bing, DuckDuckGo, Amazon and eBay.</li>
-      <li>Digs through <b>Reddit and Hacker News</b> posts for complaints, wishes and "is there an app for…" moments.</li>
+      <li>Digs through <b>Reddit, Quora and Hacker News</b> posts for complaints, wishes and "is there an app for…" moments.</li>
       <li>Sorts it all into <b>Questions, Problems, Buying, Gaps and Versus</b> so you can spot products and posts people already want.</li>
       <li>Turns the hottest finds into <b>ready-to-post ideas</b> with hooks, SEO keywords, your link and hashtags — one tap to copy.</li>
     </ul>
@@ -234,7 +235,7 @@ const copyBank = [];
 const copyBtn = (text, label = 'Copy') => { copyBank.push(text); return `<button class="rb copy" data-copy="${copyBank.length - 1}">${label}</button>`; };
 
 // ---------- scan ----------
-const MSGS = ['Scanning Google, YouTube, Amazon, Reddit…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
+const MSGS = ['Scanning Google, YouTube, Amazon, Reddit, Quora…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
 let ctl;
 async function scan() {
   const q = $('#q').value.trim();
@@ -367,7 +368,7 @@ function renderPosts() {
       <div class="meta">
         ${p.want ? '<span class="badge want">🎯 Want signal</span>' : ''}
         <span class="badge">${esc(p.where)}</span>
-        <span class="badge">▲ ${p.score}</span>
+        ${p.score ? `<span class="badge">▲ ${p.score}</span>` : ''}
         ${p.comments ? `<span class="badge">💬 ${p.comments}</span>` : ''}
         ${p.date ? `<span class="badge">${ago(p.date)}</span>` : ''}
       </div>
@@ -436,7 +437,7 @@ function claudePrompt() {
   const sec = (title, arr) => arr.length ? `\n## ${title}\n` + arr.map(s => `- ${s.text} (seen on ${s.sources.join(', ')})`).join('\n') : '';
   const by = (id) => d.suggestions.filter(s => s.cat.id === id).slice(0, 25);
   const posts = d.posts.slice(0, 25).map(p => `- ${p.want ? '[WANT] ' : ''}${p.title} — ${p.where}, ▲${p.score}, 💬${p.comments} — ${p.url}`).join('\n');
-  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and Reddit/Hacker News posts for "${d.query}". Using ONLY this data, tell me:
+  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and Reddit/Quora/Hacker News posts for "${d.query}". Using ONLY this data, tell me:
 1. The 5 strongest product or service opportunities (what to make, who buys it, rough price).
 2. The 10 best faceless short-video ideas with hooks.
 3. Any gap nobody is serving yet.

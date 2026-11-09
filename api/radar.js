@@ -46,7 +46,7 @@ async function runSource(name, kind, fn) {
     const items = await fn();
     return { name, kind, ok: true, items, ms: Date.now() - t };
   } catch (e) {
-    return { name, kind, ok: false, items: [], error: String((e && e.message) || e).slice(0, 120), ms: Date.now() - t };
+    return { name, kind, ok: false, items: [], error: String((e && e.message) || e).slice(0, 240), ms: Date.now() - t };
   }
 }
 
@@ -90,7 +90,17 @@ async function amazonSuggest(term) {
 }
 
 async function ebaySuggest(term) {
-  const j = await fetchJSON(`https://autosug.ebay.com/autosug?kwd=${enc(term)}&sId=0&_jgr=1&_ch=0`, 6000);
+  // eBay sometimes wraps its JSON in a callback; pull out the object either way.
+  const t = await fetchText(`https://autosug.ebay.com/autosug?kwd=${enc(term)}&sId=0&_jgr=1&_ch=0`, 6000);
+  const a = t.indexOf('{');
+  const b = t.lastIndexOf('}');
+  if (a < 0 || b < a) throw new Error('blocked or not JSON');
+  let j;
+  try {
+    j = JSON.parse(t.slice(a, b + 1));
+  } catch {
+    throw new Error('blocked or not JSON');
+  }
   return (j && j.res && j.res.sug) || [];
 }
 
@@ -121,40 +131,90 @@ function mapReddit(d) {
   };
 }
 
-async function redditSearch(query) {
-  const tries = [
-    `https://www.reddit.com/search.json?q=${enc(query)}&sort=relevance&t=year&limit=50&raw_json=1`,
-    `https://old.reddit.com/search.json?q=${enc(query)}&sort=relevance&t=year&limit=50&raw_json=1`,
-  ];
-  let lastErr;
-  for (const u of tries) {
-    try {
-      const j = await fetchJSON(u, 7000, { 'User-Agent': 'web:outlaw-radar:v1.0 (demand research)' });
-      const kids = (j && j.data && j.data.children) || [];
-      if (kids.length) return kids.map((k) => mapReddit(k.data));
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  // Fallback: PullPush public Reddit archive
-  try {
-    const j = await fetchJSON(
-      `https://api.pullpush.io/reddit/search/submission/?q=${enc(query)}&size=50&sort_type=score&sort=desc`,
-      8000
-    );
-    const d = (j && j.data) || [];
-    if (d.length) return d.map(mapReddit);
-  } catch (e) {
-    lastErr = e;
-  }
-  throw lastErr || new Error('no results');
+function isoDate(s) {
+  const d = new Date(s);
+  return isNaN(d) ? null : d.toISOString();
+}
+
+// Bing search results as RSS: lets us read Reddit and Quora threads
+// even when those sites block server traffic.
+async function bingRss(query) {
+  const t = await fetchText(
+    `https://www.bing.com/search?format=rss&count=30&setlang=en-US&cc=US&q=${enc(query)}`,
+    7000,
+    { Accept: 'application/rss+xml, application/xml, text/xml, */*' }
+  );
+  const items = [...t.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => {
+    const get = (tag) => {
+      const r = m[1].match(new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>'));
+      return r ? clean(clean(r[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1'))) : '';
+    };
+    return { title: get('title'), link: get('link'), description: get('description'), pubDate: get('pubDate') };
+  });
+  if (!items.length) throw new Error(/<rss/i.test(t) ? 'no results' : 'bing blocked');
+  return items;
 }
 
 async function reddit(q) {
-  return multi(
-    [q, `${q} (recommend OR "looking for" OR "is there" OR help OR wish)`],
-    redditSearch
-  );
+  const errs = [];
+  // 1) Reddit directly
+  for (const host of ['www', 'old']) {
+    try {
+      const j = await fetchJSON(
+        `https://${host}.reddit.com/search.json?q=${enc(q)}&sort=relevance&t=year&limit=50&raw_json=1`,
+        7000,
+        { 'User-Agent': 'web:outlaw-radar:v1.1 (demand research)' }
+      );
+      const kids = (j && j.data && j.data.children) || [];
+      if (kids.length) return kids.map((k) => mapReddit(k.data));
+      errs.push(host + ': empty');
+    } catch (e) {
+      errs.push(host + ': ' + e.message);
+    }
+  }
+  // 2) PullPush public Reddit archive
+  try {
+    const j = await fetchJSON(`https://api.pullpush.io/reddit/search/submission/?q=${enc(q)}&size=50`, 8000);
+    const d = (j && j.data) || [];
+    if (d.length) return d.map(mapReddit);
+    errs.push('pullpush: empty');
+  } catch (e) {
+    errs.push('pullpush: ' + e.message);
+  }
+  // 3) Reddit threads found through Bing
+  try {
+    const items = (await bingRss(`site:reddit.com ${q}`)).filter((i) => /reddit\.com\/r\//.test(i.link));
+    if (items.length)
+      return items.map((i) => ({
+        source: 'reddit',
+        title: i.title.replace(/\s*[:|\-–]\s*r\/[\w-]+.*$/i, '').replace(/\s*-\s*Reddit$/i, ''),
+        snippet: i.description.slice(0, 320),
+        url: i.link,
+        where: 'r/' + ((i.link.match(/reddit\.com\/r\/([^/]+)/) || [])[1] || 'reddit'),
+        score: 0,
+        comments: 0,
+        date: isoDate(i.pubDate),
+      }));
+    errs.push('bing: empty');
+  } catch (e) {
+    errs.push('bing: ' + e.message);
+  }
+  throw new Error(errs.join(' | '));
+}
+
+async function quora(q) {
+  const items = (await bingRss(`site:quora.com ${q}`)).filter((i) => /quora\.com\//.test(i.link));
+  if (!items.length) throw new Error('no results');
+  return items.map((i) => ({
+    source: 'quora',
+    title: i.title.replace(/\s*-\s*Quora$/i, ''),
+    snippet: i.description.slice(0, 320),
+    url: i.link,
+    where: 'Quora',
+    score: 0,
+    comments: 0,
+    date: isoDate(i.pubDate),
+  }));
 }
 
 async function hackerNews(q) {
@@ -218,6 +278,7 @@ module.exports = async (req, res) => {
     runSource('Amazon', 'suggest', () => multi([q, `${q} for`, `best ${q}`], amazonSuggest)),
     runSource('eBay', 'suggest', () => multi([q], ebaySuggest)),
     runSource('Reddit', 'posts', () => reddit(q)),
+    runSource('Quora', 'posts', () => quora(q)),
     runSource('Hacker News', 'posts', () => hackerNews(q)),
   ]);
 

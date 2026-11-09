@@ -1,5 +1,5 @@
 // Outlaw Radar service worker: network first, cached shell as backup.
-const CACHE = 'radar-v1';
+const CACHE = 'radar-v2';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
