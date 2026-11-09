@@ -69,7 +69,7 @@ h1 span{color:var(--acid)}
 .status{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}
 .st{font-size:12px;padding:4px 9px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
 .st.ok{color:var(--acid);border-color:#b8ff3c44}
-.st.bad{color:var(--hot);border-color:#ff3d7f44}
+.st.bad{color:var(--hot);border-color:#ff3d7f44;cursor:pointer}
 
 /* summary */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
@@ -241,14 +241,39 @@ function mapReddit(d) {
     url: 'https://www.reddit.com' + (d.permalink || ''), where: 'r/' + d.subreddit, score: d.score || 0,
     comments: d.num_comments || 0, date: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null };
 }
-async function redditFromPhone(q, signal) {
-  const queries = [q, `${q} (recommend OR "looking for" OR "is there" OR help OR wish)`];
-  const res = await Promise.allSettled(queries.map(async (x) => {
-    const r = await fetch(`https://www.reddit.com/search.json?q=${encodeURIComponent(x)}&sort=relevance&t=year&limit=50&raw_json=1`, { signal });
+// JSONP: loads Reddit's data as a script, which works even when the browser blocks a normal request.
+function redditJsonp(url, signal) {
+  return new Promise((resolve, reject) => {
+    const cb = '__rd' + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    let over = false;
+    const done = (fn, v) => { if (over) return; over = true; clearTimeout(t); s.remove(); setTimeout(() => { try { delete window[cb]; } catch {} }, 0); fn(v); };
+    const t = setTimeout(() => done(reject, new Error('timeout')), 9000);
+    window[cb] = (j) => done(resolve, j);
+    s.onerror = () => done(reject, new Error('script blocked'));
+    if (signal) signal.addEventListener('abort', () => done(reject, new Error('stopped')));
+    s.src = url + '&jsonp=' + cb;
+    document.head.appendChild(s);
+  });
+}
+async function redditOne(x, signal) {
+  const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(x)}&sort=relevance&t=year&limit=50&raw_json=1`;
+  const errs = [];
+  try {
+    const r = await fetch(url, { signal });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     return ((j.data && j.data.children) || []).map(k => mapReddit(k.data));
-  }));
+  } catch (e) { errs.push('fetch: ' + (e.message || e)); }
+  try {
+    const j = await redditJsonp(url, signal);
+    return ((j && j.data && j.data.children) || []).map(k => mapReddit(k.data));
+  } catch (e) { errs.push('jsonp: ' + (e.message || e)); }
+  throw new Error(errs.join(', '));
+}
+async function redditFromPhone(q, signal) {
+  const queries = [q, `${q} (recommend OR "looking for" OR "is there" OR help OR wish)`];
+  const res = await Promise.allSettled(queries.map(x => redditOne(x, signal)));
   const ok = res.filter(x => x.status === 'fulfilled');
   if (!ok.length) return { ok: false, error: String(res[0].reason && res[0].reason.message || 'blocked') };
   return { ok: true, posts: ok.flatMap(x => x.value) };
@@ -335,7 +360,7 @@ function render() {
   ];
 
   let h = `<div class="status">${d.sources.map(s =>
-    `<span class="st ${s.ok ? 'ok' : 'bad'}" title="${esc(s.error || '')}">${s.ok ? '✓' : '✗'} ${esc(s.name)}${s.ok ? ' ' + s.count : ''}</span>`).join('')}</div>`;
+    `<span class="st ${s.ok ? 'ok' : 'bad'}" ${s.ok ? '' : `data-err="${esc(s.name + ': ' + (s.error || 'failed'))}"`}>${s.ok ? '✓' : '✗'} ${esc(s.name)}${s.ok ? ' ' + s.count : ''}</span>`).join('')}</div><div class="err" id="srcerr" hidden></div>`;
 
   if (!okSrc.length) h += `<div class="err">Every source was busy. Wait a minute and scan again.</div>`;
 
@@ -492,6 +517,7 @@ function downloadCSV() {
 // ---------- events ----------
 $('#out').addEventListener('click', (e) => {
   const c = e.target.closest('[data-copy]'); if (c) return copy(copyBank[+c.dataset.copy]);
+  const se = e.target.closest('[data-err]'); if (se) { const box = $('#srcerr'); box.textContent = 'Why it failed — ' + se.dataset.err; box.hidden = false; return; }
   const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; shown = 40; render(); return; }
   const m = e.target.closest('[data-more]'); if (m) { shown += 40; render(); return; }
   const dr = e.target.closest('[data-drill]'); if (dr) { $('#q').value = dr.dataset.drill; window.scrollTo({ top: 0, behavior: 'smooth' }); scan(); return; }
