@@ -98,6 +98,7 @@ h1 span{color:var(--acid)}
 .badge{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
 .badge.cat{color:var(--text)}
 .badge.want{background:var(--hot-dim);color:var(--hot);border-color:#ff3d7f55}
+.badge.who{color:var(--sky);text-decoration:none;border-color:#58c8ff55}
 .badge.heat{background:var(--acid-dim);color:var(--acid);border-color:#b8ff3c44}
 .rowbtns{display:flex;gap:6px;margin-top:9px}
 .rb{flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:8px 6px;font-size:13px;font-weight:600;text-align:center;text-decoration:none;color:var(--text)}
@@ -167,7 +168,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0 0}
     <h3>How to read it</h3>
     <ul>
       <li>🔥 <b>Heat</b> = how many sites suggested the same search. More sites = stronger demand.</li>
-      <li>🎯 <b>Want signal</b> = a real person asking for something that doesn't exist yet. That's your gold.</li>
+      <li>🎯 <b>Asking</b> = a real person asking for something. 👤 shows who posted it, and <b>Reply</b> takes you to the thread so you can answer them.</li>
       <li>Tap 🔍 on any result to scan deeper into it.</li>
     </ul>
   </div>
@@ -239,7 +240,8 @@ const copyBtn = (text, label = 'Copy') => { copyBank.push(text); return `<button
 function mapReddit(d) {
   return { source: 'reddit', title: d.title || '', snippet: String(d.selftext || '').replace(/\s+/g, ' ').slice(0, 320),
     url: 'https://www.reddit.com' + (d.permalink || ''), where: 'r/' + d.subreddit, score: d.score || 0,
-    comments: d.num_comments || 0, date: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null };
+    comments: d.num_comments || 0, date: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null,
+    author: d.author && d.author !== '[deleted]' ? d.author : '', profile: d.author && d.author !== '[deleted]' ? 'https://www.reddit.com/user/' + d.author : '' };
 }
 // JSONP: loads Reddit's data as a script, which works even when the browser blocks a normal request.
 function redditJsonp(url, signal) {
@@ -368,7 +370,7 @@ function render() {
     <div class="stats">
       <div class="stat"><b>${d.suggestions.length}</b><small>live searches</small></div>
       <div class="stat"><b>${d.posts.length}</b><small>posts</small></div>
-      <div class="stat"><b>${wants}</b><small>🎯 want signals</small></div>
+      <div class="stat"><b>${wants}</b><small>🎯 people asking</small></div>
     </div>
     ${hot.length ? `<div class="lbl" style="margin:0 0 6px">Hottest demand</div>
     <div class="list" style="margin-bottom:12px">${hot.map(s => `<div class="badge heat" style="font-size:13px;padding:6px 9px">🔥${s.heat} · ${esc(s.text)}</div>`).join('')}</div>` : ''}
@@ -414,26 +416,40 @@ function ago(iso) {
   if (d < 1) return 'today'; if (d < 30) return Math.round(d) + 'd ago';
   if (d < 365) return Math.round(d / 30) + 'mo ago'; return Math.round(d / 365) + 'y ago';
 }
+function replyFor(p) {
+  const link = (store.get('link', '') || '').trim();
+  return `Hey${p.author ? ' ' + p.author : ''}! I've been in the same spot. [Answer their question here in a sentence or two.]` +
+    (link ? `\n\nI actually made something for exactly this, in case it helps: ${link}` : '') +
+    `\n\nHappy to answer anything else here too.`;
+}
+let wantOnly = false;
 function renderPosts() {
-  const list = data.posts;
-  if (!list.length) return `<div class="empty">No forum posts came back for this topic. Try a broader word.</div>`;
+  const wanting = data.posts.filter(p => p.want);
+  const list = wantOnly ? wanting : data.posts;
+  const head = `<div class="card" style="padding:12px;display:grid;gap:8px">
+    <button class="btn ${wantOnly ? 'pri' : ''}" data-wantonly>🎯 Only people asking for something (${wanting.length})</button>
+    <div style="color:var(--muted);font-size:13px">👤 shows who posted it publicly. Tap <b>Reply</b> to answer them in the thread. Answer their question first. Most forums remove replies that are only a link.</div>
+  </div>`;
+  if (!list.length) return head + `<div class="empty">${wantOnly ? 'Nobody in these posts is asking for something yet. Try a broader word or turn the filter off.' : 'No forum posts came back for this topic. Try a broader word.'}</div>`;
   const rows = list.slice(0, shown).map(p => `
     <div class="row">
       <div class="t">${esc(p.title)}</div>
       ${p.snippet && p.snippet !== p.title ? `<div class="s">${esc(p.snippet)}</div>` : ''}
       <div class="meta">
-        ${p.want ? '<span class="badge want">🎯 Want signal</span>' : ''}
+        ${p.want ? '<span class="badge want">🎯 Asking</span>' : ''}
+        ${p.author ? `<a class="badge who" href="${esc(p.profile || p.url)}" target="_blank" rel="noopener">👤 ${esc(p.author)}</a>` : ''}
         <span class="badge">${esc(p.where)}</span>
         ${p.score ? `<span class="badge">▲ ${p.score}</span>` : ''}
         ${p.comments ? `<span class="badge">💬 ${p.comments}</span>` : ''}
         ${p.date ? `<span class="badge">${ago(p.date)}</span>` : ''}
       </div>
       <div class="rowbtns">
-        ${copyBtn(p.title + (p.snippet && p.snippet !== p.title ? '\n\n' + p.snippet : '') + '\n\n' + p.url)}
-        <a class="rb" href="${esc(p.url)}" target="_blank" rel="noopener">↗ Open thread</a>
+        <a class="rb" href="${esc(p.url)}" target="_blank" rel="noopener">💬 Reply</a>
+        ${copyBtn(replyFor(p), 'Copy reply')}
+        ${copyBtn(p.title + (p.author ? ' (by ' + p.author + ')' : '') + '\n\n' + p.url, 'Copy post')}
       </div>
     </div>`).join('');
-  return `<div class="list">${rows}</div>${list.length > shown ? `<button class="btn more" data-more>Show more (${list.length - shown} left)</button>` : ''}`;
+  return head + `<div class="list">${rows}</div>${list.length > shown ? `<button class="btn more" data-more>Show more (${list.length - shown} left)</button>` : ''}`;
 }
 
 // ---------- post ideas ----------
@@ -519,6 +535,7 @@ $('#out').addEventListener('click', (e) => {
   const se = e.target.closest('[data-err]'); if (se) { const box = $('#srcerr'); box.textContent = 'Why it failed — ' + se.dataset.err; box.hidden = false; return; }
   const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; shown = 40; render(); return; }
   const m = e.target.closest('[data-more]'); if (m) { shown += 40; render(); return; }
+  if (e.target.closest('[data-wantonly]')) { wantOnly = !wantOnly; shown = 40; render(); return; }
   const dr = e.target.closest('[data-drill]'); if (dr) { $('#q').value = dr.dataset.drill; window.scrollTo({ top: 0, behavior: 'smooth' }); scan(); return; }
   if (e.target.closest('#csv')) downloadCSV();
 });

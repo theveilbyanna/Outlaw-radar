@@ -132,12 +132,15 @@ async function lemmy(q) {
     for (const pv of r.value.posts || []) {
       const p = pv.post || {};
       const c = pv.community || {};
+      const who = pv.creator || {};
       const n = pv.counts || {};
       out.push({
         source: 'lemmy',
         title: clean(p.name),
         snippet: clean(p.body).slice(0, 320),
         url: p.ap_id || `https://lemmy.world/post/${p.id}`,
+        author: who.display_name || who.name || '',
+        profile: who.actor_id || '',
         where: 'Lemmy · ' + (c.title || c.name || 'forum'),
         score: n.score || 0,
         comments: n.comments || 0,
@@ -162,6 +165,8 @@ async function hackerNews(q) {
         title: clean(h.title),
         snippet: clean(h.story_text).slice(0, 320),
         url: `https://news.ycombinator.com/item?id=${h.objectID}`,
+        author: h.author || '',
+        profile: h.author ? `https://news.ycombinator.com/user?id=${h.author}` : '',
         where: 'Hacker News',
         score: h.points || 0,
         comments: h.num_comments || 0,
@@ -176,6 +181,8 @@ async function hackerNews(q) {
         title: txt.slice(0, 140) + (txt.length > 140 ? '…' : ''),
         snippet: txt.slice(0, 320),
         url: `https://news.ycombinator.com/item?id=${h.objectID}`,
+        author: h.author || '',
+        profile: h.author ? `https://news.ycombinator.com/user?id=${h.author}` : '',
         where: 'HN comment' + (h.story_title ? ' · ' + clean(h.story_title).slice(0, 60) : ''),
         score: h.points || 0,
         comments: 0,
