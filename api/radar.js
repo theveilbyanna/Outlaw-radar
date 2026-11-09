@@ -131,54 +131,6 @@ function mapReddit(d) {
   };
 }
 
-// Search engines as a back door: find Reddit and Quora threads even when
-// those sites block server traffic. Tries Bing, DuckDuckGo, then Mojeek.
-function decodeHref(h) {
-  h = h.replace(/&amp;/g, '&');
-  try {
-    if (h.startsWith('//')) h = 'https:' + h;
-    const u = new URL(h, 'https://x.invalid');
-    const uddg = u.searchParams.get('uddg');
-    if (uddg) return uddg;
-    if (/bing\.com$/.test(u.hostname) && u.pathname.startsWith('/ck/')) {
-      let v = u.searchParams.get('u') || '';
-      if (v.startsWith('a1')) v = v.slice(2);
-      return Buffer.from(v.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-    }
-    return u.href;
-  } catch {
-    return h;
-  }
-}
-
-async function siteSearch(site, q, linkRe) {
-  const query = enc(`site:${site} ${q}`);
-  const engines = [
-    ['bing', `https://www.bing.com/search?q=${query}&setlang=en-US&cc=US&count=30`],
-    ['ddg', `https://html.duckduckgo.com/html/?q=${query}`],
-    ['mojeek', `https://www.mojeek.com/search?q=${query}`],
-  ];
-  const errs = [];
-  for (const [name, url] of engines) {
-    try {
-      const html = await fetchText(url, 7000, { Accept: 'text/html,application/xhtml+xml' });
-      const best = new Map();
-      for (const m of html.matchAll(/<a\b[^>]*?href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-        const link = decodeHref(m[1]).split(/[?#]/)[0];
-        if (!linkRe.test(link)) continue;
-        const title = clean(m[2]);
-        if (title.length < 12 || /^https?:|›/.test(title)) continue;
-        if (!best.has(link) || best.get(link).length < title.length) best.set(link, title);
-      }
-      if (best.size) return [...best].map(([link, title]) => ({ link, title }));
-      errs.push(name + ': none');
-    } catch (e) {
-      errs.push(name + ': ' + e.message);
-    }
-  }
-  throw new Error(errs.join(' | '));
-}
-
 async function reddit(q) {
   const errs = [];
   // 1) Reddit directly
@@ -205,37 +157,7 @@ async function reddit(q) {
   } catch (e) {
     errs.push('pullpush: ' + e.message);
   }
-  // 3) Reddit threads found through search engines
-  try {
-    const items = await siteSearch('reddit.com', q, /reddit\.com\/r\/[^/]+\/comments\//);
-    return items.map((i) => ({
-      source: 'reddit',
-      title: i.title.replace(/\s*[:|\-–]\s*r\/[\w-]+.*$/i, '').replace(/\s*[-·|]\s*Reddit.*$/i, ''),
-      snippet: '',
-      url: i.link,
-      where: 'r/' + ((i.link.match(/reddit\.com\/r\/([^/]+)/) || [])[1] || 'reddit'),
-      score: 0,
-      comments: 0,
-      date: null,
-    }));
-  } catch (e) {
-    errs.push(e.message);
-  }
   throw new Error(errs.join(' | '));
-}
-
-async function quora(q) {
-  const items = await siteSearch('quora.com', q, /quora\.com\/(?!profile|topic|search|answer|spaces?\/)[A-Za-z0-9][^/]{8,}$/);
-  return items.map((i) => ({
-    source: 'quora',
-    title: i.title.replace(/\s*[-·|]\s*Quora.*$/i, ''),
-    snippet: '',
-    url: i.link,
-    where: 'Quora',
-    score: 0,
-    comments: 0,
-    date: null,
-  }));
 }
 
 async function hackerNews(q) {
@@ -299,7 +221,6 @@ module.exports = async (req, res) => {
     runSource('Amazon', 'suggest', () => multi([q, `${q} for`, `best ${q}`], amazonSuggest)),
     runSource('eBay', 'suggest', () => multi([q], ebaySuggest)),
     runSource('Reddit', 'posts', () => reddit(q)),
-    runSource('Quora', 'posts', () => quora(q)),
     runSource('Hacker News', 'posts', () => hackerNews(q)),
   ]);
 

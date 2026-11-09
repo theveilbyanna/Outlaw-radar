@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Outlaw Radar — Find What People Want</title>
-<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Reddit, Quora and Hacker News live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
+<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Reddit and Hacker News live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
 <meta name="keywords" content="market research tool, what people are searching for, keyword research free, product ideas, content ideas, reddit pain points, answer the public alternative, niche research">
 <meta property="og:title" content="Outlaw Radar — Find What People Want">
 <meta property="og:description" content="Live demand scanner: real searches, real complaints, real wishes. Turn them into products and posts.">
@@ -160,7 +160,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0 0}
     <h3>What it does</h3>
     <ul>
       <li>Pulls what people are <b>typing right now</b> into Google, YouTube, Bing, DuckDuckGo, Amazon and eBay.</li>
-      <li>Digs through <b>Reddit, Quora and Hacker News</b> posts for complaints, wishes and "is there an app for…" moments.</li>
+      <li>Digs through <b>Reddit and Hacker News</b> posts for complaints, wishes and "is there an app for…" moments.</li>
       <li>Sorts it all into <b>Questions, Problems, Buying, Gaps and Versus</b> so you can spot products and posts people already want.</li>
       <li>Turns the hottest finds into <b>ready-to-post ideas</b> with hooks, SEO keywords, your link and hashtags — one tap to copy.</li>
     </ul>
@@ -234,8 +234,37 @@ async function copy(text) {
 const copyBank = [];
 const copyBtn = (text, label = 'Copy') => { copyBank.push(text); return `<button class="rb copy" data-copy="${copyBank.length - 1}">${label}</button>`; };
 
+// ---------- Reddit straight from your phone ----------
+// Reddit blocks requests from servers, so the page asks Reddit directly.
+function mapReddit(d) {
+  return { source: 'reddit', title: d.title || '', snippet: String(d.selftext || '').replace(/\s+/g, ' ').slice(0, 320),
+    url: 'https://www.reddit.com' + (d.permalink || ''), where: 'r/' + d.subreddit, score: d.score || 0,
+    comments: d.num_comments || 0, date: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : null };
+}
+async function redditFromPhone(q, signal) {
+  const queries = [q, `${q} (recommend OR "looking for" OR "is there" OR help OR wish)`];
+  const res = await Promise.allSettled(queries.map(async (x) => {
+    const r = await fetch(`https://www.reddit.com/search.json?q=${encodeURIComponent(x)}&sort=relevance&t=year&limit=50&raw_json=1`, { signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    return ((j.data && j.data.children) || []).map(k => mapReddit(k.data));
+  }));
+  const ok = res.filter(x => x.status === 'fulfilled');
+  if (!ok.length) return { ok: false, error: String(res[0].reason && res[0].reason.message || 'blocked') };
+  return { ok: true, posts: ok.flatMap(x => x.value) };
+}
+function mergeReddit(j, rr) {
+  const src = j.sources.find(s => s.name === 'Reddit');
+  if (!rr || !rr.ok) { if (src && !src.ok) src.error = 'phone: ' + (rr && rr.error) + ' | server: ' + src.error; return; }
+  const seen = new Set(j.posts.map(p => p.url));
+  const add = rr.posts.filter(p => p.title && !seen.has(p.url) && seen.add(p.url));
+  j.posts.push(...add);
+  const count = j.posts.filter(p => p.source === 'reddit').length;
+  if (src) Object.assign(src, { ok: true, count, error: null });
+}
+
 // ---------- scan ----------
-const MSGS = ['Scanning Google, YouTube, Amazon, Reddit, Quora…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
+const MSGS = ['Scanning Google, YouTube, Amazon, Reddit…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
 let ctl;
 async function scan() {
   const q = $('#q').value.trim();
@@ -250,9 +279,11 @@ async function scan() {
   const mt = setInterval(() => { mi = (mi + 1) % MSGS.length; $('#loadmsg').textContent = MSGS[mi]; }, 2200);
   try { history.replaceState(null, '', '?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '')); } catch {}
   try {
+    const redditP = redditFromPhone(q, ctl.signal);
     const r = await fetch(`/api/radar?q=${encodeURIComponent(q)}${deep ? '&deep=1' : ''}`, { signal: ctl.signal });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'Scan failed');
+    mergeReddit(j, await redditP);
     data = enrich(j); tab = 'all'; shown = 40;
     render();
   } catch (e) {
@@ -438,7 +469,7 @@ function claudePrompt() {
   const sec = (title, arr) => arr.length ? `\n## ${title}\n` + arr.map(s => `- ${s.text} (seen on ${s.sources.join(', ')})`).join('\n') : '';
   const by = (id) => d.suggestions.filter(s => s.cat.id === id).slice(0, 25);
   const posts = d.posts.slice(0, 25).map(p => `- ${p.want ? '[WANT] ' : ''}${p.title} — ${p.where}, ▲${p.score}, 💬${p.comments} — ${p.url}`).join('\n');
-  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and Reddit/Quora/Hacker News posts for "${d.query}". Using ONLY this data, tell me:
+  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and Reddit/Hacker News posts for "${d.query}". Using ONLY this data, tell me:
 1. The 5 strongest product or service opportunities (what to make, who buys it, rough price).
 2. The 10 best faceless short-video ideas with hooks.
 3. Any gap nobody is serving yet.
