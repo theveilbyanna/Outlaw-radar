@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Outlaw Radar — Find What People Want</title>
+<meta name="description" content="Outlaw Radar scans Google, YouTube, Bing, DuckDuckGo, Amazon, eBay, Reddit and Hacker News live to show what people are searching for, struggling with and wishing existed. Free market research and content ideas.">
+<meta name="keywords" content="market research tool, what people are searching for, keyword research free, product ideas, content ideas, reddit pain points, answer the public alternative, niche research">
+<meta property="og:title" content="Outlaw Radar — Find What People Want">
+<meta property="og:description" content="Live demand scanner: real searches, real complaints, real wishes. Turn them into products and posts.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0b0b10">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0b10;--surface:#14141b;--surface2:#1b1b24;--line:#2a2a36;
+  --text:#eeeaf5;--muted:#9a95ab;--acid:#b8ff3c;--acid-dim:#b8ff3c22;
+  --hot:#ff3d7f;--hot-dim:#ff3d7f22;--sky:#58c8ff;--gold:#ffc94d;
+  --r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.45 Inter,system-ui,sans-serif;min-height:100vh;padding-bottom:90px}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:var(--sky)}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px}
+
+/* header */
+header{padding:22px 0 10px;display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;flex:none}
+h1{font:700 24px/1.1 'Space Grotesk',sans-serif;letter-spacing:-.02em}
+h1 span{color:var(--acid)}
+.tag{color:var(--muted);font-size:13px;margin-top:2px}
+
+/* search */
+.search{position:sticky;top:0;z-index:20;background:linear-gradient(var(--bg) 80%,transparent);padding:10px 0 14px}
+.bar{display:flex;gap:8px}
+.bar input{flex:1;min-width:0;background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r);padding:14px 14px;font-size:16px;outline:none}
+.bar input:focus{border-color:var(--acid)}
+.go{background:var(--acid);color:#0b0b10;font-weight:700;border-radius:var(--r);padding:0 18px;font-family:'Space Grotesk',sans-serif;font-size:16px}
+.go:disabled{opacity:.5}
+.opts{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.toggle input{accent-color:var(--acid);width:18px;height:18px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0 2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.chip .x{color:var(--muted);font-size:15px;line-height:1;padding-left:2px}
+.chip.add{border-style:dashed;color:var(--muted)}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:10px}
+
+/* radar loader */
+.loader{display:none;flex-direction:column;align-items:center;padding:40px 0;gap:14px;color:var(--muted)}
+.loader.on{display:flex}
+.radar{width:120px;height:120px;border-radius:50%;position:relative;border:1.5px solid var(--acid-dim);
+  background:radial-gradient(circle,transparent 30%,var(--acid-dim) 31%,transparent 32%,transparent 62%,var(--acid-dim) 63%,transparent 64%)}
+.radar::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 0deg,transparent 0 300deg,#b8ff3c55 350deg,var(--acid) 360deg);animation:sweep 1.6s linear infinite}
+@keyframes sweep{to{transform:rotate(360deg)}}
+
+/* status */
+.status{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px}
+.st{font-size:12px;padding:4px 9px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.st.ok{color:var(--acid);border-color:#b8ff3c44}
+.st.bad{color:var(--hot);border-color:#ff3d7f44}
+
+/* summary */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.card h2{font:700 17px 'Space Grotesk',sans-serif;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--surface2);border-radius:10px;padding:10px;text-align:center}
+.stat b{display:block;font:700 22px 'Space Grotesk',sans-serif;color:var(--acid)}
+.stat small{color:var(--muted);font-size:12px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600}
+.btn.pri{background:var(--acid);color:#0b0b10;border-color:var(--acid)}
+
+/* tabs */
+.tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:4px 0 12px;position:sticky;top:70px;z-index:10;background:var(--bg);padding:6px 0}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;border-radius:999px;padding:8px 13px;font-size:13px;font-weight:600;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.tab[aria-selected=true]{background:var(--text);color:var(--bg);border-color:var(--text)}
+.tab .n{opacity:.6;font-weight:500;margin-left:3px}
+
+/* rows */
+.list{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px}
+.row .t{font-weight:600;word-wrap:break-word}
+.row .s{color:var(--muted);font-size:13px;margin-top:4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;align-items:center}
+.badge{font-size:11px;padding:2px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+.badge.cat{color:var(--text)}
+.badge.want{background:var(--hot-dim);color:var(--hot);border-color:#ff3d7f55}
+.badge.heat{background:var(--acid-dim);color:var(--acid);border-color:#b8ff3c44}
+.rowbtns{display:flex;gap:6px;margin-top:9px}
+.rb{flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:8px 6px;font-size:13px;font-weight:600;text-align:center;text-decoration:none;color:var(--text)}
+.rb.copy{color:var(--acid)}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+.more{width:100%;margin-top:10px}
+
+/* ideas */
+.ideaset{display:grid;gap:8px;margin-bottom:12px}
+.ideaset input{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;width:100%;font-size:15px;outline:none}
+.ideaset input:focus{border-color:var(--acid)}
+.idea .hook{font:700 16px 'Space Grotesk',sans-serif;margin-bottom:6px}
+.idea pre{white-space:pre-wrap;font:13px/1.45 Inter,sans-serif;color:var(--muted);background:var(--surface2);border-radius:10px;padding:10px;margin-top:6px;max-height:180px;overflow:auto}
+.idea .prod{font-size:13px;margin-top:8px;color:var(--gold)}
+
+.intro{color:var(--muted);padding:18px 2px}
+.intro h3{color:var(--text);font:700 16px 'Space Grotesk',sans-serif;margin:16px 0 6px}
+.intro li{margin:4px 0 4px 18px}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,30px);background:var(--acid);color:#0b0b10;font-weight:700;padding:11px 18px;border-radius:999px;opacity:0;transition:.25s;z-index:99;pointer-events:none}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.err{background:var(--hot-dim);border:1px solid #ff3d7f55;color:var(--text);border-radius:12px;padding:12px;margin-bottom:12px}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="logo" viewBox="0 0 44 44" aria-hidden="true">
+      <circle cx="22" cy="22" r="20" fill="none" stroke="#b8ff3c" stroke-opacity=".35" stroke-width="1.5"/>
+      <circle cx="22" cy="22" r="12" fill="none" stroke="#b8ff3c" stroke-opacity=".35" stroke-width="1.5"/>
+      <path d="M22 22 L22 2 A20 20 0 0 1 40 14 Z" fill="#b8ff3c" fill-opacity=".55"/>
+      <circle cx="31" cy="15" r="2.6" fill="#ff3d7f"/>
+      <circle cx="22" cy="22" r="2.2" fill="#b8ff3c"/>
+    </svg>
+    <div>
+      <h1>Outlaw <span>Radar</span></h1>
+      <div class="tag">Find what people want — live from the web</div>
+    </div>
+  </header>
+
+  <div class="search">
+    <form class="bar" id="form">
+      <input id="q" type="search" placeholder="Any topic… e.g. tarot, dog training" autocomplete="off" enterkeyhint="search">
+      <button class="go" id="go" type="submit">Scan</button>
+    </form>
+  </div>
+  <div>
+    <div class="opts">
+      <label class="toggle"><input type="checkbox" id="deep"> Deep scan (A–Z, slower, way more results)</label>
+    </div>
+    <div class="lbl">My niches</div>
+    <div class="chips" id="niches"></div>
+  </div>
+
+  <div class="loader" id="loader"><div class="radar"></div><div id="loadmsg">Scanning Google, YouTube, Amazon, Reddit…</div></div>
+  <div id="out"></div>
+
+  <div class="intro" id="intro">
+    <h3>What it does</h3>
+    <ul>
+      <li>Pulls what people are <b>typing right now</b> into Google, YouTube, Bing, DuckDuckGo, Amazon and eBay.</li>
+      <li>Digs through <b>Reddit and Hacker News</b> posts for complaints, wishes and "is there an app for…" moments.</li>
+      <li>Sorts it all into <b>Questions, Problems, Buying, Gaps and Versus</b> so you can spot products and posts people already want.</li>
+      <li>Turns the hottest finds into <b>ready-to-post ideas</b> with hooks, SEO keywords, your link and hashtags — one tap to copy.</li>
+    </ul>
+    <h3>How to read it</h3>
+    <ul>
+      <li>🔥 <b>Heat</b> = how many sites suggested the same search. More sites = stronger demand.</li>
+      <li>🎯 <b>Want signal</b> = a real person asking for something that doesn't exist yet. That's your gold.</li>
+      <li>Tap 🔍 on any result to scan deeper into it.</li>
+    </ul>
+  </div>
+
+  <footer>Outlaw Radar · a Digital Outlaw tool · free forever</footer>
+</div>
+<div class="toast" id="toast">Copied</div>
+
+<script>
+(() => {
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('radar.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('radar.' + k, JSON.stringify(v)); } catch {} }
+};
+
+// ---------- categories ----------
+const CATS = [
+  { id: 'v', label: 'Versus', icon: '⚖️', re: /\b(vs\.?|versus|compared|difference between|better than|compare)\b/i },
+  { id: 'p', label: 'Problems', icon: '🔥', re: /(not working|doesn'?t work|won'?t|can'?t|\bcant\b|broken|\bfix|problem|issue|error|\bhelp\b|stuck|\bhate|annoying|frustrat|struggl|scam|too expensive|\bpain\b|worst|\bfail|wrong|\bsick\b|\bstop\b|aggressive|anxiety)/i },
+  { id: 'q', label: 'Questions', icon: '❓', re: /^(how|what|why|where|when|who|which|can|could|do|does|did|is|are|was|should|will|would)\b/i },
+  { id: 'b', label: 'Buying', icon: '💸', re: /\b(best|buy|cheap|price|prices|cost|for sale|deal|deals|discount|review|reviews|top|affordable|near me|under|worth it|coupon|sale|shop|store|gift|gifts|kit|set|bundle|brand|brands)\b/i },
+  { id: 'g', label: 'Gaps', icon: '💡', re: /\b(alternative|alternatives|app|apps|tool|tools|software|is there|wish|looking for|recommend|need|ideas|idea|without|template|templates|generator|free|diy|custom|service|course|class|book|printable|guide|online|for beginners|for kids|for women|for men)\b/i },
+];
+const catOf = (t) => (CATS.find(c => c.re.test(t)) || { id: 't', label: 'Trending', icon: '📈' });
+const WANT = /(i wish|looking for|is there (an?|any)|anyone know|recommend|suggestions?|need help|how do i|alternative to|frustrat|struggl|can'?t find|would pay|i hate|any app|any tool|does anyone|help me|advice)/i;
+
+// ---------- state ----------
+let data = null, tab = 'all', shown = 40;
+const DEFAULT_NICHES = ['tarot', 'doberman', 'gothic pin up art', 'custom jeans', 'AI receptionist', 'phone wallpapers'];
+let niches = store.get('niches', DEFAULT_NICHES);
+
+function renderNiches() {
+  const el = $('#niches');
+  el.innerHTML = niches.map((n, i) =>
+    `<button class="chip" data-n="${esc(n)}">${esc(n)}<span class="x" data-del="${i}" aria-label="Remove">×</span></button>`
+  ).join('') + `<button class="chip add" id="addNiche">＋ Save current</button>`;
+}
+$('#niches').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-del]');
+  if (del) { e.stopPropagation(); niches.splice(+del.dataset.del, 1); store.set('niches', niches); renderNiches(); return; }
+  if (e.target.closest('#addNiche')) {
+    const v = $('#q').value.trim();
+    if (!v) return toast('Type a topic first');
+    if (!niches.includes(v)) { niches.unshift(v); store.set('niches', niches); renderNiches(); toast('Saved'); }
+    return;
+  }
+  const c = e.target.closest('[data-n]');
+  if (c) { $('#q').value = c.dataset.n; scan(); }
+});
+renderNiches();
+
+// ---------- copy ----------
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 1400); }
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast('Copied ✓'); return; } catch {}
+  const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); toast('Copied ✓'); } catch { toast('Long-press to copy'); }
+  ta.remove();
+}
+const copyBank = [];
+const copyBtn = (text, label = 'Copy') => { copyBank.push(text); return `<button class="rb copy" data-copy="${copyBank.length - 1}">${label}</button>`; };
+
+// ---------- scan ----------
+const MSGS = ['Scanning Google, YouTube, Amazon, Reddit…', 'Reading what people type at 2am…', 'Digging through complaints and wishes…', 'Sorting the gold from the noise…'];
+let ctl;
+async function scan() {
+  const q = $('#q').value.trim();
+  if (!q) { $('#q').focus(); return; }
+  ctl?.abort(); ctl = new AbortController();
+  const deep = $('#deep').checked;
+  $('#intro').style.display = 'none';
+  $('#out').innerHTML = '';
+  $('#loader').classList.add('on');
+  $('#go').disabled = true;
+  let mi = 0; $('#loadmsg').textContent = MSGS[0];
+  const mt = setInterval(() => { mi = (mi + 1) % MSGS.length; $('#loadmsg').textContent = MSGS[mi]; }, 2200);
+  try { history.replaceState(null, '', '?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '')); } catch {}
+  try {
+    const r = await fetch(`/api/radar?q=${encodeURIComponent(q)}${deep ? '&deep=1' : ''}`, { signal: ctl.signal });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Scan failed');
+    data = enrich(j); tab = 'all'; shown = 40;
+    render();
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    $('#out').innerHTML = `<div class="err">Scan didn't finish: ${esc(e.message)}. Check your connection and tap Scan again.</div>`;
+  } finally {
+    clearInterval(mt); $('#loader').classList.remove('on'); $('#go').disabled = false;
+  }
+}
+$('#form').addEventListener('submit', (e) => { e.preventDefault(); $('#q').blur(); scan(); });
+
+function enrich(j) {
+  const qWords = j.query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  j.suggestions.forEach(s => { s.cat = catOf(s.text); s.heat = s.sources.length; });
+  j.posts.forEach(p => {
+    const txt = p.title + ' ' + p.snippet;
+    p.want = WANT.test(txt);
+    p.cat = catOf(p.title);
+    p.rel = qWords.length ? qWords.filter(w => txt.toLowerCase().includes(w)).length / qWords.length : 1;
+    p.rank = (p.want ? 1000 : 0) + p.rel * 400 + Math.log10(1 + p.score) * 60 + Math.log10(1 + p.comments) * 80;
+  });
+  j.posts = j.posts.filter(p => p.rel > 0).sort((a, b) => b.rank - a.rank);
+  return j;
+}
+
+// ---------- render ----------
+const SRC_SHORT = { Google: 'G', YouTube: 'YT', Bing: 'Bing', DuckDuckGo: 'DDG', Amazon: 'Amazon', eBay: 'eBay' };
+function itemsFor(t) {
+  if (t === 'all') return data.suggestions;
+  if (t === 'posts' || t === 'ideas') return [];
+  if (t === 't') return data.suggestions.filter(s => s.cat.id === 't');
+  const c = CATS.find(c => c.id === t);
+  return data.suggestions.filter(s => c.re.test(s.text));
+}
+
+function render() {
+  copyBank.length = 0;
+  const d = data;
+  const okSrc = d.sources.filter(s => s.ok);
+  const wants = d.posts.filter(p => p.want).length;
+  const hot = d.suggestions.slice(0, 5);
+  const tabs = [
+    ['all', '🌐 All', d.suggestions.length],
+    ...CATS.map(c => [c.id, `${c.icon} ${c.label}`, itemsFor(c.id).length]),
+    ['t', '📈 Trending', itemsFor('t').length],
+    ['posts', '🗣 Posts', d.posts.length],
+    ['ideas', '✍️ Post ideas', ''],
+  ];
+
+  let h = `<div class="status">${d.sources.map(s =>
+    `<span class="st ${s.ok ? 'ok' : 'bad'}" title="${esc(s.error || '')}">${s.ok ? '✓' : '✗'} ${esc(s.name)}${s.ok ? ' ' + s.count : ''}</span>`).join('')}</div>`;
+
+  if (!okSrc.length) h += `<div class="err">Every source was busy. Wait a minute and scan again.</div>`;
+
+  h += `<div class="card">
+    <h2>📡 “${esc(d.query)}”</h2>
+    <div class="stats">
+      <div class="stat"><b>${d.suggestions.length}</b><small>live searches</small></div>
+      <div class="stat"><b>${d.posts.length}</b><small>posts</small></div>
+      <div class="stat"><b>${wants}</b><small>🎯 want signals</small></div>
+    </div>
+    ${hot.length ? `<div class="lbl" style="margin:0 0 6px">Hottest demand</div>
+    <div class="list" style="margin-bottom:12px">${hot.map(s => `<div class="badge heat" style="font-size:13px;padding:6px 9px">🔥${s.heat} · ${esc(s.text)}</div>`).join('')}</div>` : ''}
+    <div class="actions">
+      ${copyBtn(claudePrompt(), '🤖 Copy for Claude').replace('rb copy', 'btn pri')}
+      <button class="btn" id="csv">⬇️ Download CSV</button>
+      ${copyBtn(location.href, '🔗 Copy link').replace('rb copy', 'btn')}
+    </div>
+  </div>`;
+
+  h += `<div class="tabs" role="tablist">${tabs.map(([id, label, n]) =>
+    `<button class="tab" role="tab" aria-selected="${tab === id}" data-tab="${id}">${label}${n !== '' ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div>`;
+
+  if (tab === 'posts') h += renderPosts();
+  else if (tab === 'ideas') h += renderIdeas();
+  else h += renderSugs(itemsFor(tab));
+
+  $('#out').innerHTML = h;
+}
+
+function renderSugs(list) {
+  if (!list.length) return `<div class="empty">Nothing in this group. Try another tab or a Deep scan.</div>`;
+  const rows = list.slice(0, shown).map(s => `
+    <div class="row">
+      <div class="t">${esc(s.text)}</div>
+      <div class="meta">
+        <span class="badge heat">🔥 ${s.heat}</span>
+        <span class="badge cat">${s.cat.icon} ${s.cat.label}</span>
+        ${s.sources.map(x => `<span class="badge">${esc(SRC_SHORT[x] || x)}</span>`).join('')}
+      </div>
+      <div class="rowbtns">
+        ${copyBtn(s.text)}
+        <button class="rb" data-drill="${esc(s.text)}">🔍 Dig in</button>
+        <a class="rb" href="https://www.google.com/search?q=${encodeURIComponent(s.text)}" target="_blank" rel="noopener">↗ Google</a>
+      </div>
+    </div>`).join('');
+  return `<div class="list">${rows}</div>${list.length > shown ? `<button class="btn more" data-more>Show more (${list.length - shown} left)</button>` : ''}`;
+}
+
+function ago(iso) {
+  if (!iso) return '';
+  const d = (Date.now() - new Date(iso)) / 864e5;
+  if (d < 1) return 'today'; if (d < 30) return Math.round(d) + 'd ago';
+  if (d < 365) return Math.round(d / 30) + 'mo ago'; return Math.round(d / 365) + 'y ago';
+}
+function renderPosts() {
+  const list = data.posts;
+  if (!list.length) return `<div class="empty">No posts came back for this topic. Reddit sometimes blocks scans — try again in a bit, or try a broader word.</div>`;
+  const rows = list.slice(0, shown).map(p => `
+    <div class="row">
+      <div class="t">${esc(p.title)}</div>
+      ${p.snippet && p.snippet !== p.title ? `<div class="s">${esc(p.snippet)}</div>` : ''}
+      <div class="meta">
+        ${p.want ? '<span class="badge want">🎯 Want signal</span>' : ''}
+        <span class="badge">${esc(p.where)}</span>
+        <span class="badge">▲ ${p.score}</span>
+        ${p.comments ? `<span class="badge">💬 ${p.comments}</span>` : ''}
+        ${p.date ? `<span class="badge">${ago(p.date)}</span>` : ''}
+      </div>
+      <div class="rowbtns">
+        ${copyBtn(p.title + (p.snippet && p.snippet !== p.title ? '\n\n' + p.snippet : '') + '\n\n' + p.url)}
+        <a class="rb" href="${esc(p.url)}" target="_blank" rel="noopener">↗ Open thread</a>
+      </div>
+    </div>`).join('');
+  return `<div class="list">${rows}</div>${list.length > shown ? `<button class="btn more" data-more>Show more (${list.length - shown} left)</button>` : ''}`;
+}
+
+// ---------- post ideas ----------
+const STOP = new Set('a an the and or for to of in on at is are be can how what why where when who which with without my your you i me do does did vs near not best cheap from this that it its'.split(' '));
+const tagify = (s) => '#' + String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
+function hashtagsFor(text, cat) {
+  const q = data.query;
+  const base = [tagify(q), tagify(q + ' tips'), tagify(q + ' community')];
+  const words = (text.toLowerCase().match(/[a-z0-9]+/g) || []).filter(w => w.length > 2 && !STOP.has(w));
+  const fromText = [...new Set(words)].slice(0, 4).map(tagify);
+  const byCat = { q: ['#howto', '#learnontiktok', '#tipsandtricks'], p: ['#problemsolved', '#lifehacks', '#realtalk'],
+    b: ['#musthave', '#worthit', '#shopsmall'], g: ['#smallbusiness', '#newproduct', '#comingsoon'],
+    v: ['#whichoneareyou', '#thisorthat', '#honestreview'], t: ['#trending', '#viral', '#fyp'] }[cat] || [];
+  const brand = (store.get('tags', '') || '').split(/[\s,]+/).filter(Boolean).map(t => t.startsWith('#') ? t : '#' + t);
+  return [...new Set([...base, ...fromText, ...byCat, ...brand])].filter(t => t.length > 2).slice(0, 15).join(' ');
+}
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+function makeIdea(s) {
+  const t = s.text, c = s.cat.id, q = data.query;
+  const link = (store.get('link', '') || '').trim();
+  const H = {
+    q: [`${cap(t)}? Here's the real answer 👇`, `People search “${t}” every single day. Save this so you have the answer when you need it 💾`, `Turn the answer into a free guide or cheat sheet and link it.`],
+    p: [`If “${t}” is driving you crazy — watch this.`, `You're not the only one dealing with “${t}”. Here's what actually helps 👇 Tell me in the comments if this happened to you.`, `Sell the fix: a step-by-step guide, kit or service that solves “${t}”.`],
+    b: [`Before you spend a dime on “${t}”…`, `Everyone's shopping for “${t}” right now. Here's what to look for so you don't waste your money 👇`, `Make or curate the product people are shopping for — or a buyer's guide with your link.`],
+    g: [`People keep asking for “${t}”. So I made it.`, `I kept seeing people search “${t}” and nobody had a good answer. Comment “WANT” if you'd use this 👇`, `This is a gap — build the ${/app|tool|software|generator/i.test(t) ? 'app/tool' : 'product'} and validate it with “WANT” comments first.`],
+    v: [`${cap(t)} — which one actually wins?`, `“${t}” — I broke it down so you don't have to. Vote in the comments 👇`, `Make a comparison chart or quiz and use it as a lead magnet.`],
+    t: [`Why is everyone searching “${t}” right now?`, `“${t}” is blowing up in searches. Here's what you need to know 👇`, `Ride the trend with a quick post, then point people to your shop.`],
+  }[c];
+  const seo = `🔎 ${t} | ${q} tips | ${q} ideas | ${q} for beginners`;
+  const tags = hashtagsFor(t, c);
+  const caption = `${H[0]}\n\n${H[1]}\n\n${link ? '🔗 ' + link + '\n\n' : ''}${seo}\n\n${tags}`;
+  return { hook: H[0], caption, tags, prod: H[2], cat: s.cat };
+}
+function renderIdeas() {
+  const pick = (id, n) => data.suggestions.filter(s => s.cat.id === id).slice(0, n);
+  const chosen = [...pick('g', 4), ...pick('p', 4), ...pick('q', 4), ...pick('b', 3), ...pick('v', 2), ...pick('t', 2)];
+  const head = `<div class="card ideaset">
+    <h2 style="margin:0">✍️ Post ideas from real demand</h2>
+    <input id="ilink" placeholder="Your link (shop, site, Payhip…)" value="${esc(store.get('link', ''))}">
+    <input id="itags" placeholder="Your brand hashtags, e.g. #DigitalOutlaw" value="${esc(store.get('tags', ''))}">
+  </div>`;
+  if (!chosen.length) return head + `<div class="empty">Not enough searches yet to build ideas. Try a broader topic.</div>`;
+  return head + `<div class="list">${chosen.map(s => {
+    const i = makeIdea(s);
+    return `<div class="row idea">
+      <div class="meta" style="margin:0 0 6px"><span class="badge cat">${i.cat.icon} ${i.cat.label}</span><span class="badge heat">🔥 ${s.heat}</span></div>
+      <div class="hook">${esc(i.hook)}</div>
+      <pre>${esc(i.caption)}</pre>
+      <div class="prod">💡 ${esc(i.prod)}</div>
+      <div class="rowbtns">${copyBtn(i.caption, 'Copy caption')}${copyBtn(i.hook, 'Copy hook')}${copyBtn(i.tags, 'Copy tags')}</div>
+    </div>`; }).join('')}</div>`;
+}
+
+// ---------- exports ----------
+function claudePrompt() {
+  const d = data;
+  const sec = (title, arr) => arr.length ? `\n## ${title}\n` + arr.map(s => `- ${s.text} (seen on ${s.sources.join(', ')})`).join('\n') : '';
+  const by = (id) => d.suggestions.filter(s => s.cat.id === id).slice(0, 25);
+  const posts = d.posts.slice(0, 25).map(p => `- ${p.want ? '[WANT] ' : ''}${p.title} — ${p.where}, ▲${p.score}, 💬${p.comments} — ${p.url}`).join('\n');
+  return `I scanned live search autocomplete (Google, YouTube, Bing, DuckDuckGo, Amazon, eBay) and Reddit/Hacker News posts for "${d.query}". Using ONLY this data, tell me:
+1. The 5 strongest product or service opportunities (what to make, who buys it, rough price).
+2. The 10 best faceless short-video ideas with hooks.
+3. Any gap nobody is serving yet.
+Be direct and rank them.
+${sec('Problems', by('p'))}${sec('Questions', by('q'))}${sec('Buying intent', by('b'))}${sec('Gaps / wishes', by('g'))}${sec('Comparisons', by('v'))}${sec('Trending', by('t'))}
+${posts ? '\n## Posts\n' + posts : ''}`;
+}
+function downloadCSV() {
+  const d = data, q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [['type', 'text', 'category', 'heat_or_score', 'sources_or_where', 'url'].join(',')];
+  d.suggestions.forEach(s => lines.push([ 'search', s.text, s.cat.label, s.heat, s.sources.join(' | '), 'https://www.google.com/search?q=' + encodeURIComponent(s.text)].map(q).join(',')));
+  d.posts.forEach(p => lines.push(['post' + (p.want ? ' (want)' : ''), p.title, p.cat.label, p.score, p.where, p.url].map(q).join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `outlaw-radar-${d.query.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('Downloading…');
+}
+
+// ---------- events ----------
+$('#out').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-copy]'); if (c) return copy(copyBank[+c.dataset.copy]);
+  const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; shown = 40; render(); return; }
+  const m = e.target.closest('[data-more]'); if (m) { shown += 40; render(); return; }
+  const dr = e.target.closest('[data-drill]'); if (dr) { $('#q').value = dr.dataset.drill; window.scrollTo({ top: 0, behavior: 'smooth' }); scan(); return; }
+  if (e.target.closest('#csv')) downloadCSV();
+});
+$('#out').addEventListener('input', (e) => {
+  if (e.target.id === 'ilink') store.set('link', e.target.value);
+  if (e.target.id === 'itags') store.set('tags', e.target.value);
+});
+$('#out').addEventListener('change', (e) => { if (e.target.id === 'ilink' || e.target.id === 'itags') render(); });
+
+// open from link ?q=
+const p = new URLSearchParams(location.search);
+if (p.get('q')) { $('#q').value = p.get('q'); $('#deep').checked = p.get('deep') === '1'; scan(); }
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>

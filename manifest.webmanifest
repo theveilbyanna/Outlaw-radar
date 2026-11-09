@@ -1,0 +1,23 @@
+{
+  "name": "Outlaw Radar",
+  "short_name": "Radar",
+  "description": "Find what people want \u2014 live demand from Google, YouTube, Amazon, eBay, Reddit and more.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0b10",
+  "theme_color": "#0b0b10",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
