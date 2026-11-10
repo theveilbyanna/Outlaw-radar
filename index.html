@@ -103,6 +103,10 @@ h1 span{color:var(--acid)}
 .rowbtns{display:flex;gap:6px;margin-top:9px}
 .rb{flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:8px 6px;font-size:13px;font-weight:600;text-align:center;text-decoration:none;color:var(--text)}
 .rb.copy{color:var(--acid)}
+.draft{margin-top:9px;display:grid;gap:6px}
+.draft textarea{width:100%;min-height:150px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;font:14px/1.45 Inter,sans-serif;color:var(--text);resize:vertical}
+.draft textarea:focus{border-color:var(--acid);outline:none}
+.hint{color:var(--muted);font-size:12px}
 .empty{color:var(--muted);text-align:center;padding:30px 10px}
 .more{width:100%;margin-top:10px}
 
@@ -416,22 +420,46 @@ function ago(iso) {
   if (d < 1) return 'today'; if (d < 30) return Math.round(d) + 'd ago';
   if (d < 365) return Math.round(d / 30) + 'mo ago'; return Math.round(d / 365) + 'y ago';
 }
-function replyFor(p) {
-  const link = (store.get('link', '') || '').trim();
-  return `Hey${p.author ? ' ' + p.author : ''}! I've been in the same spot. [Answer their question here in a sentence or two.]` +
-    (link ? `\n\nI actually made something for exactly this, in case it helps: ${link}` : '') +
-    `\n\nHappy to answer anything else here too.`;
+// ---------- reply drafts ----------
+// Each draft quotes the person's own words, rotates its opener so no two replies are identical,
+// and leaves your link out unless you switch it on.
+const OPEN_NAMED = ['Hey {a}!', 'Hi {a},', 'Oh man {a}, I feel this.', 'Hey {a}, good question.', '{a}, I was in the same spot.'];
+const OPEN_ANON = ['Hey!', 'Hi there,', 'Oh man, I feel this.', 'Good question.', 'I was in the same spot.'];
+function theirWords(p) {
+  let t = String(p.title || '').replace(/\s*[-|:]\s*(r\/\w+|reddit|quora|hacker news|lemmy)\b.*$/i, '')
+    .replace(/^(ask|show|tell)\s+hn:\s*/i, '').trim();
+  if (t.length > 90) t = t.slice(0, 87).replace(/\s+\S*$/, '') + '…';
+  return t;
 }
+function replyFor(p, i) {
+  const open = p.author ? OPEN_NAMED[i % OPEN_NAMED.length].replace('{a}', p.author) : OPEN_ANON[i % OPEN_ANON.length];
+  const offer = (store.get('offer', '') || '').trim();
+  const link = (store.get('link', '') || '').trim();
+  const withLink = store.get('replylink', false) && link;
+  const w = theirWords(p);
+  const saw = open.endsWith(',') ? 'saw' : 'Saw';
+  let out = `${open} ${saw} your post about "${w}"${/[?!.…]$/.test(w) ? '' : '.'}\n\n[Answer their question here in a sentence or two.]`;
+  if (offer) out += withLink ? `\n\nI actually made ${offer} for exactly this, in case it helps: ${link}`
+                             : `\n\nI actually made ${offer} for exactly this. Happy to send it if it would help.`;
+  else out += withLink ? `\n\nThis might help too: ${link}` : `\n\nHappy to help more if you want.`;
+  return out;
+}
+const drafts = new Map();     // post url -> text you've edited
+const openDrafts = new Set(); // post urls with the draft box open
 let wantOnly = false;
 function renderPosts() {
   const wanting = data.posts.filter(p => p.want);
   const list = wantOnly ? wanting : data.posts;
   const head = `<div class="card" style="padding:12px;display:grid;gap:8px">
     <button class="btn ${wantOnly ? 'pri' : ''}" data-wantonly>🎯 Only people asking for something (${wanting.length})</button>
-    <div style="color:var(--muted);font-size:13px">👤 shows who posted it publicly. Tap <b>Reply</b> to answer them in the thread. Answer their question first. Most forums remove replies that are only a link.</div>
+    <div class="ideaset" style="margin:0">
+      <input id="offer" placeholder="What you made, e.g. a free tarot journal" value="${esc(store.get('offer', ''))}" autocomplete="off">
+    </div>
+    <label class="toggle"><input type="checkbox" id="replylink" ${store.get('replylink', false) ? 'checked' : ''}> Put my link in replies${(store.get('link', '') || '').trim() ? '' : ' (add your link in ✍️ Post ideas first)'}</label>
+    <div style="color:var(--muted);font-size:13px">👤 shows who posted it publicly. Tap <b>✍️ Draft reply</b>, fill in the [brackets], tap <b>Copy reply</b>, then <b>↗ Open post</b> and paste it. Answer their question first, and leave your link off unless they ask. Most forums remove replies that are only a link.</div>
   </div>`;
   if (!list.length) return head + `<div class="empty">${wantOnly ? 'Nobody in these posts is asking for something yet. Try a broader word or turn the filter off.' : 'No forum posts came back for this topic. Try a broader word.'}</div>`;
-  const rows = list.slice(0, shown).map(p => `
+  const rows = list.slice(0, shown).map((p, i) => `
     <div class="row">
       <div class="t">${esc(p.title)}</div>
       ${p.snippet && p.snippet !== p.title ? `<div class="s">${esc(p.snippet)}</div>` : ''}
@@ -444,10 +472,18 @@ function renderPosts() {
         ${p.date ? `<span class="badge">${ago(p.date)}</span>` : ''}
       </div>
       <div class="rowbtns">
-        <a class="rb" href="${esc(p.url)}" target="_blank" rel="noopener">💬 Reply</a>
-        ${copyBtn(replyFor(p), 'Copy reply')}
+        <a class="rb" href="${esc(p.url)}" target="_blank" rel="noopener">↗ Open post</a>
+        <button class="rb copy" data-draft="${esc(p.url)}">${openDrafts.has(p.url) ? '✕ Close draft' : '✍️ Draft reply'}</button>
         ${copyBtn(p.title + (p.author ? ' (by ' + p.author + ')' : '') + '\n\n' + p.url, 'Copy post')}
       </div>
+      ${openDrafts.has(p.url) ? `<div class="draft">
+        <textarea data-dkey="${esc(p.url)}" aria-label="Your reply">${esc(drafts.has(p.url) ? drafts.get(p.url) : replyFor(p, i))}</textarea>
+        <div class="hint">Swap the [brackets] for your own words. Every draft starts a little different so it doesn't look copy-pasted.</div>
+        <div class="rowbtns" style="margin-top:0">
+          <button class="rb copy" data-dcopy="${esc(p.url)}">📋 Copy reply</button>
+          <a class="rb" href="${esc(p.url)}" target="_blank" rel="noopener">↗ Open post to paste</a>
+        </div>
+      </div>` : ''}
     </div>`).join('');
   return head + `<div class="list">${rows}</div>${list.length > shown ? `<button class="btn more" data-more>Show more (${list.length - shown} left)</button>` : ''}`;
 }
@@ -536,14 +572,37 @@ $('#out').addEventListener('click', (e) => {
   const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; shown = 40; render(); return; }
   const m = e.target.closest('[data-more]'); if (m) { shown += 40; render(); return; }
   if (e.target.closest('[data-wantonly]')) { wantOnly = !wantOnly; shown = 40; render(); return; }
+  const dt = e.target.closest('[data-draft]');
+  if (dt) {
+    const key = dt.dataset.draft;
+    if (openDrafts.has(key)) openDrafts.delete(key); else openDrafts.add(key);
+    render();
+    const box = [...document.querySelectorAll('textarea[data-dkey]')].find(x => x.dataset.dkey === key);
+    if (box) box.focus({ preventScroll: true });
+    return;
+  }
+  const dc = e.target.closest('[data-dcopy]');
+  if (dc) {
+    const box = [...document.querySelectorAll('textarea[data-dkey]')].find(x => x.dataset.dkey === dc.dataset.dcopy);
+    if (box) {
+      if (/\[[^\]]+\]/.test(box.value)) toast('Fill in the [brackets] first');
+      else copy(box.value);
+    }
+    return;
+  }
   const dr = e.target.closest('[data-drill]'); if (dr) { $('#q').value = dr.dataset.drill; window.scrollTo({ top: 0, behavior: 'smooth' }); scan(); return; }
   if (e.target.closest('#csv')) downloadCSV();
 });
 $('#out').addEventListener('input', (e) => {
   if (e.target.id === 'ilink') store.set('link', e.target.value);
   if (e.target.id === 'itags') store.set('tags', e.target.value);
+  if (e.target.id === 'offer') store.set('offer', e.target.value);
+  if (e.target.dataset && e.target.dataset.dkey) drafts.set(e.target.dataset.dkey, e.target.value);
 });
-$('#out').addEventListener('change', (e) => { if (e.target.id === 'ilink' || e.target.id === 'itags') render(); });
+$('#out').addEventListener('change', (e) => {
+  if (e.target.id === 'replylink') { store.set('replylink', e.target.checked); render(); return; }
+  if (e.target.id === 'ilink' || e.target.id === 'itags') render();
+});
 
 // open from link ?q=
 const p = new URLSearchParams(location.search);
